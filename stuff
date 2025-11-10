@@ -1,0 +1,55 @@
+# Asset Pricing Architecture (Parent, Children, Curve, Engine)
+
+This document defines the structure of the asset pricing system and the responsibilities of each component.
+
+---
+
+## Diagram: Where the tool is called and how parts interact
+
+```mermaid
+flowchart TD
+    U["User / Application Layer\n(constructs asset, loads curve, selects engine)"] --> E["PricingEngine\n(the tool that computes PV, yield, risk)"]
+
+    subgraph Asset_Hierarchy["Asset Hierarchy"]
+        A["Asset (Parent Class)\nAbstract: defines interface and shared helpers"]
+        B["FixedRateBond (Child)\nConcrete: fixed coupons"]
+        C["FloatingRateNote (Child)\nConcrete: index + spread"]
+        D["ZeroCouponBond (Child)\nConcrete: single maturity cashflow"]
+        E1["AmortizingLoan (Child)\nConcrete: scheduled principal paydown"]
+        E2["CallableBond (Child)\nConcrete: call/put logic layered on cashflows"]
+        A --> B
+        A --> C
+        A --> D
+        A --> E1
+        A --> E2
+    end
+
+    E -->|calls| A2["asset.cashflows()\n(dates, amounts)\n(no market data here)"]
+    E -->|calls| C2["DiscountCurve\n(df(date), forward(start,end))\n(market data)"]
+    E --> R["Results\nPrice • Yield • Duration • PV01 • Spread"]
+
+    %% Optional utilities (not mandatory but common)
+    subgraph Utilities["Optional Utilities"]
+      SB["ScheduleBuilder\n(date rules, calendars, day count)"]
+      DC["DayCount\n(year fractions)"]
+      CAL["BusinessCalendar\n(holidays, adjustments)"]
+    end
+
+    %% Associations
+    A -. uses .-> SB
+    A -. uses .-> DC
+    A -. uses .-> CAL
+
+    %% Styles (kept simple for readability)
+    style Asset_Hierarchy fill:#f0f5ff,stroke:#6a8bd3,color:#000
+    style A fill:#cfe1ff,stroke:#6a8bd3,color:#000
+    style B fill:#e6f0ff,stroke:#6a8bd3,color:#000
+    style C fill:#e6f0ff,stroke:#6a8bd3,color:#000
+    style D fill:#e6f0ff,stroke:#6a8bd3,color:#000
+    style E1 fill:#e6f0ff,stroke:#6a8bd3,color:#000
+    style E2 fill:#e6f0ff,stroke:#6a8bd3,color:#000
+    style E fill:#eeeeee,stroke:#666,color:#000
+    style C2 fill:#f7f7f7,stroke:#666,color:#000
+    style Utilities fill:#fafafa,stroke:#bbb,color:#000
+    style U fill:#e8f5e9,stroke:#6aa84f,color:#000
+    style R fill:#e8f5e9,stroke:#6aa84f,color:#000
