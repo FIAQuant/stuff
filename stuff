@@ -1,55 +1,97 @@
-# Asset Pricing Architecture (Parent, Children, Curve, Engine)
+# Asset Pricing Architecture (Text Layout)
 
-This document defines the structure of the asset pricing system and the responsibilities of each component.
+─────────────────────────────────────────────
+USER / APPLICATION LAYER
+─────────────────────────────────────────────
+- Builds asset objects (e.g., FixedRateBond)
+- Loads market data (discount curve)
+- Selects and calls the pricing engine
 
----
+    engine.price(asset, asof, curve)
 
-## Diagram: Where the tool is called and how parts interact
+─────────────────────────────────────────────
+PRICING ENGINE  ← the "tool"
+─────────────────────────────────────────────
+Purpose: Combine asset cashflows with curve data.
 
-```mermaid
-flowchart TD
-    U["User / Application Layer\n(constructs asset, loads curve, selects engine)"] --> E["PricingEngine\n(the tool that computes PV, yield, risk)"]
+Receives:
+    • Asset  →  provides cashflow dates & amounts
+    • Curve  →  provides discount factors
 
-    subgraph Asset_Hierarchy["Asset Hierarchy"]
-        A["Asset (Parent Class)\nAbstract: defines interface and shared helpers"]
-        B["FixedRateBond (Child)\nConcrete: fixed coupons"]
-        C["FloatingRateNote (Child)\nConcrete: index + spread"]
-        D["ZeroCouponBond (Child)\nConcrete: single maturity cashflow"]
-        E1["AmortizingLoan (Child)\nConcrete: scheduled principal paydown"]
-        E2["CallableBond (Child)\nConcrete: call/put logic layered on cashflows"]
-        A --> B
-        A --> C
-        A --> D
-        A --> E1
-        A --> E2
-    end
+Does:
+    • Discount each cashflow
+    • Sum to get PV / price
+    • Optionally compute yield, duration, spread
 
-    E -->|calls| A2["asset.cashflows()\n(dates, amounts)\n(no market data here)"]
-    E -->|calls| C2["DiscountCurve\n(df(date), forward(start,end))\n(market data)"]
-    E --> R["Results\nPrice • Yield • Duration • PV01 • Spread"]
+Returns:
+    • Price, Yield, Duration, PV01, etc.
 
-    %% Optional utilities (not mandatory but common)
-    subgraph Utilities["Optional Utilities"]
-      SB["ScheduleBuilder\n(date rules, calendars, day count)"]
-      DC["DayCount\n(year fractions)"]
-      CAL["BusinessCalendar\n(holidays, adjustments)"]
-    end
+─────────────────────────────────────────────
+ASSET HIERARCHY
+─────────────────────────────────────────────
+Parent class:
+    Asset (abstract)
+      ├─ defines schedule(), cashflows()
+      ├─ holds identifiers (id, issue, maturity, nominal)
+      └─ contains only deterministic logic
+         (no curve or pricing code)
 
-    %% Associations
-    A -. uses .-> SB
-    A -. uses .-> DC
-    A -. uses .-> CAL
+Child classes:
+    ├─ FixedRateBond      → fixed coupons
+    ├─ FloatingRateNote   → index + spread coupons
+    ├─ ZeroCouponBond     → single maturity payment
+    ├─ AmortizingLoan     → principal paid over time
+    └─ CallableBond       → optional call / put features
 
-    %% Styles (kept simple for readability)
-    style Asset_Hierarchy fill:#f0f5ff,stroke:#6a8bd3,color:#000
-    style A fill:#cfe1ff,stroke:#6a8bd3,color:#000
-    style B fill:#e6f0ff,stroke:#6a8bd3,color:#000
-    style C fill:#e6f0ff,stroke:#6a8bd3,color:#000
-    style D fill:#e6f0ff,stroke:#6a8bd3,color:#000
-    style E1 fill:#e6f0ff,stroke:#6a8bd3,color:#000
-    style E2 fill:#e6f0ff,stroke:#6a8bd3,color:#000
-    style E fill:#eeeeee,stroke:#666,color:#000
-    style C2 fill:#f7f7f7,stroke:#666,color:#000
-    style Utilities fill:#fafafa,stroke:#bbb,color:#000
-    style U fill:#e8f5e9,stroke:#6aa84f,color:#000
-    style R fill:#e8f5e9,stroke:#6aa84f,color:#000
+Each child implements:
+    • build_schedule()
+    • cashflow_components(date)
+Parent provides:
+    • cashflows()  → generic aggregation of components
+
+─────────────────────────────────────────────
+MARKET DATA LAYER
+─────────────────────────────────────────────
+DiscountCurve
+    • df(date) → discount factor
+    • forward(start, end) → forward rate
+    • Holds pillar dates, discount factors, interpolation rules
+    • Pure data object, no asset logic
+
+─────────────────────────────────────────────
+OPTIONAL UTILITIES
+─────────────────────────────────────────────
+ScheduleBuilder  – constructs business-day-adjusted schedules  
+DayCount         – computes year fractions  
+BusinessCalendar – defines holiday / roll conventions  
+
+─────────────────────────────────────────────
+DATA FLOW SUMMARY
+─────────────────────────────────────────────
+[User/App]
+     │
+     ▼
+[Asset child class]
+     │  build_schedule(), cashflow_components()
+     ▼
+[Asset.cashflows()]  → dates, amounts
+     │
+     ▼
+[PricingEngine]  ← calls →  [DiscountCurve.df(date)]
+     │
+     ▼
+[Results: Price, Yield, Duration, PV01]
+
+─────────────────────────────────────────────
+DO / DON'T CHECKLIST
+─────────────────────────────────────────────
+DO:
+  • Keep Asset free of market data.
+  • Centralize pricing/curve math in PricingEngine.
+  • Reuse one engine for all bond types.
+  • Validate schedules & cashflows in parent.
+
+DON’T:
+  • Duplicate pricing functions in each child.
+  • Mix schedule logic with discounting.
+  • Depend on curve objects inside Asset classes.
